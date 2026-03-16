@@ -1,8 +1,17 @@
 function getEvents(period = "100y") {
-    let events = new Array();
+    if (timeParse(period) == -1) {
+        console.log("Period invalid");
+        return null;
+    }
+
+    const events = new Array();
     for (let i = 0; i<localStorage.length; i++) {
-        let key = localStorage.key(i);
-        if (Date.parse(JSON.parse(localStorage.getItem(key)).date) > Date.now() && Date.parse(JSON.parse(localStorage.getItem(key)).date) < Date.now() + timeParse(period)) {
+        const key = localStorage.key(i);
+        if (!key.startsWith("CoE-")) {
+            continue;
+        }
+        const date = JSON.parse(localStorage.getItem(key)).date;
+        if (Date.parse(date) > Date.now() && Date.parse(date) < Date.now() + timeParse(period)) {
             events.push(localStorage.getItem(key));
         }
     }
@@ -17,29 +26,37 @@ function getEvents(period = "100y") {
     return events;
 }
 
-function addEvent(name, date = "10s", func = testFunction1) {
-    if (localStorage.getItem(name) !== null) {
+function addEvent(name, date = "10s", callback = testFunction1) {
+    if (localStorage.getItem("CoE-" + name) !== null) {
         console.log("Event with that name already exists");
         return null;
     }
+    if (timeParse(date) == -1) {
+        console.log("Date invalid");
+        return null;
+    }
 
-    let timerId = setTimeout(() => {
-        func();
-        localStorage.removeItem(name);
+    if (date) {
+
+    }
+
+    const timerId = setTimeout(() => {
+        callback();
+        localStorage.removeItem("CoE-" + name);
     }, timeParse(date));
 
-    let event = {
+    const event = {
         name: name,
         date: new Date(Date.now() + timeParse(date)),
-        func: func.name,
+        callback: functionParse(callback),
         timerId: timerId
     };
 
-    localStorage.setItem(name, JSON.stringify(event));
+    localStorage.setItem("CoE-" + name, JSON.stringify(event));
 
-    if (localStorage.getItem(name) !== null) {
+    if (localStorage.getItem("CoE-" + name) !== null) {
         console.log(`${name} was created successfully`);
-        return localStorage.getItem(name);
+        return localStorage.getItem("CoE-" + name);
     }
     else {
         console.log("Something went wrong");
@@ -48,16 +65,16 @@ function addEvent(name, date = "10s", func = testFunction1) {
 }
 
 function deleteEvent(name) {
-    if (localStorage.getItem(name) === null) {
+    if (localStorage.getItem("CoE-" + name) === null) {
         console.log("Event with that name doesn't exist");
         return null;
     }
 
-    clearTimeout(JSON.parse(localStorage.getItem(name)).timerId);
+    clearTimeout(JSON.parse(localStorage.getItem("CoE-" + name)).timerId);
 
-    localStorage.removeItem(name);
+    localStorage.removeItem("CoE-" + name);
 
-    if (localStorage.getItem(name) === null) {
+    if (localStorage.getItem("CoE-" + name) === null) {
         console.log(`${name} was deleted successfully`);
         return null;
     }
@@ -67,56 +84,89 @@ function deleteEvent(name) {
     }
 }
 
-function editEvent(name, newName, newDate) {
-    if (localStorage.getItem(name) === null) {
+function changeEventName(name, newName) {
+    if (localStorage.getItem("CoE-" + name) === null) {
         console.log("Event with that name doesn't exist");
         return null;
     }
-
-    let event = JSON.parse(localStorage.getItem(name));
-
-    if (newName != undefined || newDate != undefined) {
-        clearTimeout(event.timerId);
-
-        let timerId = setTimeout(() => {
-            event.func();
-            localStorage.removeItem((newName != undefined) ? newName : event.name);
-        }, new Date((newDate != undefined) ? Date.now() + timeParse(newDate) : event.date) - Date.now());
-        if (newName != undefined) {
-            event.name = newName;
-        }
-        if (newDate != undefined) {
-            event.date = newDate;
-        }
-        event.timerId = timerId;
-
-        localStorage.removeItem(name);
-        localStorage.setItem(newName, JSON.stringify(event));
-
-        console.log(`${name} was edited successfully`);
-        return localStorage.getItem(newName);
+    if (newName === undefined) {
+        return localStorage.getItem("CoE-" + name);
     }
-    else {
-        return localStorage.getItem(name);
+
+    const event = JSON.parse(localStorage.getItem("CoE-" + name));
+
+    clearTimeout(event.timerId);
+
+    const body = event.callback[1];
+    const params = event.callback[2].split(/,\s*/);
+    const callback = new Function(...params, body);
+    const timerId = setTimeout(() => {
+        callback();
+        localStorage.removeItem("CoE-" + newName);
+    }, new Date(Date.parse(event.date) - Date.now()));
+    event.name = newName;
+    event.timerId = timerId;
+
+    localStorage.removeItem("CoE-" + name);
+    localStorage.setItem("CoE-" + newName, JSON.stringify(event));
+
+    console.log(`${name} name was changed to ${newName} successfully`);
+    return localStorage.getItem("CoE-" + (newName));
+}
+
+function changeEventDate(name, newDate) {
+    if (localStorage.getItem("CoE-" + name) === null) {
+        console.log("Event with that name doesn't exist");
+        return null;
     }
+    if (newDate != undefined && timeParse(newDate) == -1) {
+        console.log("Date invalid");
+        return null;
+    }
+
+    const event = JSON.parse(localStorage.getItem("CoE-" + name));
+
+    clearTimeout(event.timerId);
+
+    const body = event.callback[1];
+    const params = event.callback[2].split(/,\s*/);
+    const callback = new Function(...params, body);
+    const timerId = setTimeout(() => {
+        callback();
+        localStorage.removeItem("CoE-" + name);
+    }, new Date(timeParse(newDate)));
+    event.date = new Date(Date.now() + timeParse(newDate));
+    event.timerId = timerId;
+
+    localStorage.removeItem("CoE-" + name);
+    localStorage.setItem("CoE-" + name, JSON.stringify(event));
+
+    console.log(`${name} date was changed successfully`);
+    return localStorage.getItem("CoE-" + (name));
 }
 
 function init() {
-    let events = new Array();
+    const events = new Array();
     for (let i = 0; i<localStorage.length; i++) {
-        let key = localStorage.key(i);
-        let event = JSON.parse(localStorage.getItem(key));
+        const key = localStorage.key(i);
+        if (!key.startsWith("CoE-")) {
+            continue;
+        }
+        const event = JSON.parse(localStorage.getItem(key));
         if (Date.parse(event.date) > Date.now()) {
+            const body = event.callback[1];
+            const params = event.callback[2].split(/,\s*/);
+            const callback = new Function(...params, body);
             event.timerId = setTimeout(() => {
-                event.func();
-                localStorage.removeItem(event.name);
+                callback();
+                localStorage.removeItem("CoE-" + event.name);
             }, new Date(event.date) - Date.now());
 
             events.push(event);
         }
     }
     for (let event of events) {
-        localStorage.setItem(event.name, JSON.stringify(event))
+        localStorage.setItem("CoE-" + event.name, JSON.stringify(event))
     }
 
     getEvents();
@@ -124,12 +174,12 @@ function init() {
 
 function timeParse(time) {
     let parsedTime = 0;
-    if (!isNaN(Date.parse(time))) {
-        parsedTime = new Date(time) - Date.now();
+    if (!isNaN(Date.parse(time.trim())) && Date.parse(time.trim()) > Date.now()) {
+        parsedTime = new Date(time.trim()) - Date.now();
     }
-    else {
-        let arr = new Array();
-        let timeStr = time;
+    else if (/^\d+[YyMmWwDdHhSs](\s*\d+[YyMmWwDdHhSs])*$/.test(time.trim())) {
+        const arr = new Array();
+        let timeStr = time.trim();
         let i = 0;
 
         while (true) {
@@ -172,7 +222,19 @@ function timeParse(time) {
             }
         }
     }
+    else {
+        return -1;
+    }
     return parsedTime;
+}
+
+function functionParse(callback) {
+    const callbackString = callback.toString();
+    const name = callback.name;
+    const body = callbackString.substring((callbackString.indexOf("{")) + 1, callbackString.lastIndexOf("}"));
+    const params = callbackString.substring((callbackString.indexOf("(")) + 1, callbackString.indexOf(")"));
+    const callbackArray = [name, body, params];
+    return callbackArray;
 }
 
 function clear() {
@@ -182,3 +244,10 @@ function clear() {
 function testFunction1() {
     console.log("Test function 1");
 }
+
+function testFunction2(a, b,c ,s) {
+    console.log("Test function 2");
+    console.log(a + b + c + s);
+}
+
+init();
